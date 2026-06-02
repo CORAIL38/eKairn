@@ -22,8 +22,8 @@
 #include "nrf_rtc.h"
 
 // Release informations
-static const uint32_t EKAIRN_FW_VERSION_HEX = 0x07A0;
-#define EKAIRN_FW_VERSION_STR "V07.a.0 27/04/2026"
+static const uint32_t EKAIRN_FW_VERSION_HEX = 0x07C0;
+#define EKAIRN_FW_VERSION_STR "V07.c.0 26/05/2026"
 
 // ------------- Compilation Options --------------------
 // define EK_LOWPOW for low power mode (use in production mode)
@@ -90,28 +90,29 @@ struct eKairnParam {
  *          eKairn Configuration
  *
  */
+
 static struct eKairnParam eKairnDefault = {
   /* 
   .12345678901234567890123456789012 
   */
   "eKairn7        ",  // Name of the device
-  123,                // poste = P123
-  0,                  // Major = 0
+  51,                 // poste = P51
+  0x9999,             // Major = 9999
   1,                  // Vikazimut type
   5,                  // Tx Level = -4dBm
   320,                // Period is 200ms
   0,                  // no Fast Reset
   1,                  // MEGA LED
   1,                  // BUZZER
-  2,                  // Battery type 550mAH
+  3,                  // Battery type 550mAH
   0x0059,             // Manufacturer: default Nordic
   0,                  // Timeout (expressed in x5 Minutes)
   0x415D6365,         // HWR Key
   0xCAFE,             // FAB Key
   0x1234,             // ERM Key
-  1,                  // ePaper display
-  0,                  // Solar
-  1,                  // ePaper Display rotation
+  0,                  // ePaper display
+  1,                  // Solar
+  0,                  // ePaper Display rotation
   "eKairn by fbd38",  // Display Message
   0xA5A5CAFE          // Void
 };
@@ -155,7 +156,7 @@ void eKairnParamDump(eKairnParam ekp) {
 #define eKairnCodeLow 0xA5F0
 
 #define EKAIRN_MANU_STR "eKairn community"
-#define EKAIRN_MODEL_STR "eKairn micro"
+#define EKAIRN_MODEL_STR "eKairn Solar"
 
 // -------- Define QSPI memroy organisation ---------
 // Contains FW revision number, use to reload the whole FLASH when FW changes
@@ -186,13 +187,18 @@ void eKairnFuncLoPow() {
 }
 
 void eKairnFuncBuzz() {
-  // one secound "La"
-  for (int16_t i = 0; i < 500; i++) {
-    digitalWrite(BUZZER_PIN, HIGH);
-    delay(1);
-    digitalWrite(BUZZER_PIN, LOW);
-    delay(1);
-  }
+  // If active buzzer
+  digitalWrite(BUZZER_PIN, LOW);
+  delay(500);
+  digitalWrite(BUZZER_PIN, HIGH);
+  // if Passive buzzer
+  // // one secound "La"
+  // for (int16_t i = 0; i < 500; i++) {
+  //   digitalWrite(BUZZER_PIN, HIGH);
+  //   delay(1);
+  //   digitalWrite(BUZZER_PIN, LOW);
+  //   delay(1);
+  // }
 }
 // A valid Beacon packet consists of the following information:
 // UUID, Major, Minor, RSSI @ 1M
@@ -267,7 +273,8 @@ void setup() {
   pinMode(MEGA_LED_PIN, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(MEGA_LED_PIN, LOW);  // OFF
-  digitalWrite(BUZZER_PIN, LOW);    // OFF
+                                    //  digitalWrite(BUZZER_PIN, LOW);  // OFF if active HIGH
+  digitalWrite(BUZZER_PIN, HIGH);   // OFF if active LOW
 
   /* Initialize the serial port */
   Serial.begin(115200);
@@ -450,6 +457,13 @@ void connect_callback(uint16_t conn_handle) {
   eKairnStop = false;
   // default is security level as low as possible
   eKSEC = SEC_USR;
+  // but if ERM key is zero
+  if (eKairnCurrent.eKairnERMKey == 0) {
+    eKSEC = SEC_ERM;
+    // and if FAB key is zero
+    if (eKairnCurrent.eKairnFABKey == 0) eKSEC = SEC_FAB;
+  }
+  showSecurityLED();
   eKSEChasChanged = false;
 #ifdef EK_LOWPOW
   resumeLoop();
@@ -546,6 +560,7 @@ void help() {
   Serial.println(disp);
   bleuart.write(disp, strlen(disp));
   if (eKSEC >= SEC_ERM) {
+    sprintf(disp, "\r\n");
     sprintf(disp, "Mddd: set Marker\r\n");
     strcat(disp, "Tdd: set Tx power\r\n");
     strcat(disp, "Pdddd: set Period\r\n");
@@ -566,11 +581,13 @@ void help() {
     Serial.println(disp);
     bleuart.write(disp, strlen(disp));
     if (eKSEC >= SEC_FAB) {
+      sprintf(disp, "\r\n");
       sprintf(disp, "Ncccccccccc: Set Mame\r\n");
       strcat(disp, "Exxxx: set EMR key");
       Serial.println(disp);
       bleuart.write(disp, strlen(disp));
       if (eKSEC >= SEC_HWR) {
+        sprintf(disp, "\r\n");
         sprintf(disp, "!xxxx: set manufacturer\r\n");
         strcat(disp, "Oxxxx: set hw Options\r\n");
         strcat(disp, "Cxxxx: VBat Calibrate\r\n");
@@ -581,6 +598,27 @@ void help() {
         bleuart.write(disp, strlen(disp));
       }
     }
+  }
+}
+
+// Function that shows the security through the LED
+void showSecurityLED() {
+  digitalWrite(LED_BLUE, HIGH);
+  digitalWrite(LED_GREEN, HIGH);
+  digitalWrite(LED_RED, HIGH);
+  switch (eKSEC) {
+    case SEC_USR:                   // BLUE
+      digitalWrite(LED_BLUE, LOW);  // turn the BLUE LED ON
+      break;
+    case SEC_ERM:                    // GREEN
+      digitalWrite(LED_GREEN, LOW);  // turn the BLUE LED ON
+      break;
+    case SEC_FAB:                   // PURPLE
+      digitalWrite(LED_BLUE, LOW);  // turn the BLUE LED ON
+      digitalWrite(LED_RED, LOW);   // turn the RED LED ON
+      break;
+    case SEC_HWR:                  // RED
+      digitalWrite(LED_RED, LOW);  // turn the RED LED ON
   }
 }
 
@@ -624,18 +662,18 @@ void loop() {
   while (bleuart.available()) {
     uint8_t ch;
     bool valCom = false;
-    ch = (uint8_t)bleuart.read();
+    ch = (uint8_t)toupper(bleuart.read());
     Serial.print("Rx BLE command = [");
     Serial.print((char)ch);
     Serial.println("]");
 
     // Parser the list of commands
     // The display help message according with security level
-    if ((ch == 'H') || (ch == 'h') || (ch == '?')) {
+    if ((ch == 'H') || (ch == '?')) {
       help();
       valCom = true;
     }
-    if ((ch == 'I') || (ch == 'i')) {
+    if (ch == 'I') {
       char disp[255] = "";
       sprintf(disp, EKAIRN_MODEL_STR);
       strcat(disp, "\n\r");
@@ -644,7 +682,7 @@ void loop() {
       bleuart.write(disp, strlen(disp));
       valCom = true;
     }
-    if ((ch == 'S') || (ch == 's')) {
+    if (ch == 'S') {
       // Display status
       char st[16] = "";
       sprintf(st, "Marker = %3d", eKairnCurrent.eKairnMarker);
@@ -699,12 +737,18 @@ void loop() {
       }
       valCom = true;
     }
-    if ((ch == 'V') || (ch == 'v')) {
+    if (ch == 'V') {
       // Perform a VBat acquisition
       float VBat = ReadVbat();
       Serial.print("VBat = ");
       char cvbat[64];
       sprintf(cvbat, "%5.3f V = %3d %% (%6.0f)", VBat, ConvertVBatInPercent(VBat), BatCapacityRemaining(VBat));
+      Serial.println(cvbat);
+      bleuart.write(cvbat, strlen(cvbat));
+      // Perform a Temperature acquisition
+      float Temp = ReadTemp();
+      Serial.printf("Temp = ");
+      sprintf(cvbat, "; T = %6.2f°C ", Temp);
       Serial.println(cvbat);
       bleuart.write(cvbat, strlen(cvbat));
       valCom = true;
@@ -732,7 +776,7 @@ void loop() {
         valCom = true;
       }
       // Set TX level
-      if ((ch == 'T') || (ch == 't')) {
+      if (ch == 'T') {
         int16_t nval = readBLE16dec();
         if ((nval < 0) || (nval > 13)) {
           const char err[] = "ERROR Invalid Value, must be [0..13]";
@@ -748,7 +792,7 @@ void loop() {
         }
         valCom = true;
       }
-      if ((ch == 'P') || (ch == 'p')) {
+      if (ch == 'P') {
         int16_t nval = readBLE16dec();
         if ((nval < 100) || (nval > 1600)) {
           const char err[] = "ERROR Invalid Value, must be [100..1600]";
@@ -764,7 +808,7 @@ void loop() {
         }
         valCom = true;
       }
-      if ((ch == 'W') || (ch == 'w')) {
+      if (ch == 'W') {
         int16_t nval = readBLE16dec();
         if ((nval < 0) || (nval > 8928)) {
           const char err[] = "ERROR Invalid Value, must be [0..8928] (31 jours max!)";
@@ -780,13 +824,13 @@ void loop() {
         }
         valCom = true;
       }
-      if ((ch == 'Z') || (ch == 'z')) {
+      if (ch == 'Z') {
         eKairnCurrent = eKairnFactory;
         eKainNeedUpdate = true;
         valCom = true;
       }
       // R: fast Reset
-      if ((ch == 'R') || (ch == 'r')) {
+      if (ch == 'R') {
         uint8_t ch;
         ch = (uint8_t)bleuart.read();
         if (ch == '1')
@@ -800,7 +844,7 @@ void loop() {
         valCom = true;
       }
       // Jxyzt: set maJor value
-      if ((ch == 'J') || (ch == 'j')) {
+      if (ch == 'J') {
         int16_t val = readBLE16hex();
         eKairnCurrent.eKairnMajor = val;
         eKainNeedUpdate = true;
@@ -811,29 +855,31 @@ void loop() {
         valCom = true;
       }
       // Stop the device, will rerquire a reset or power up to restart
-      if ((ch == 'Q') || (ch == 'q')) {
+      if (ch == 'Q') {
         Serial.println("[Device Stop] use RESET Magnet or PWR ON to restart");
         eKairnStop = true;
         valCom = true;
       }
       if (eKairnCurrent.eKairnHWMegaLED) {
         if (ch == 'L') {
-          digitalWrite(MEGA_LED_PIN, HIGH);  // turn the Mega LED ON
-          valCom = true;
-        }
-        if (ch == 'l') {
-          digitalWrite(MEGA_LED_PIN, LOW);  // turn the Mega LED OFF
-          valCom = true;
+          int16_t nval = readBLE16dec();
+          if (nval != 0) {
+            digitalWrite(MEGA_LED_PIN, HIGH);  // turn the Mega LED ON
+            valCom = true;
+          } else {
+            digitalWrite(MEGA_LED_PIN, LOW);  // turn the Mega LED OFF
+            valCom = true;
+          }
         }
       }
       if (eKairnCurrent.eKairnHWBuzzer) {
-        if ((ch == 'B') || (ch == 'b')) {
+        if (ch == 'B') {
           eKairnFuncBuzz();
           valCom = true;
         }
       }
       if (eKairnCurrent.eKairnHWDisplay) {
-        if ((ch == 'G') || (ch == 'g')) {
+        if (ch == 'G') {
           int16_t nval = readBLE16dec();
           if ((nval < 0) || (nval > 3)) {
             const char err[] = "ERROR Invalid Value, must be [0..3]";
@@ -851,15 +897,16 @@ void loop() {
             eKairnDisplayDigit(eKairnCurrent.eKairnDispRot, eKairnCurrent.eKairnMarker, eKairnCurrent.eKairnMessage);
           }
         }
-        if ((ch == 'A') || (ch == 'a')) {
+        if (ch == 'A') {
           eKairnFuncBuzz();
           valCom = true;
           eKairnDisplayDigit(eKairnCurrent.eKairnDispRot, eKairnCurrent.eKairnMarker, eKairnCurrent.eKairnMessage);
         }
       }
+      // Then check commands allowed in FAB mode
       if (eKSEC >= SEC_FAB) {
         // Nxxxxxxxx change name of the device
-        if ((ch == 'N') || (ch == 'n')) {
+        if (ch == 'N') {
           char new_name[10];
           bool err = false;
           int i = 0;
@@ -879,7 +926,7 @@ void loop() {
           valCom = true;
         }
         // Exxx set EMR key
-        if ((ch == 'E') || (ch == 'e')) {
+        if (ch == 'E') {
           uint16_t val = readBLE16hex();
           eKairnCurrent.eKairnERMKey = val;
           eKairnFactory.eKairnERMKey = val;
@@ -887,6 +934,7 @@ void loop() {
           eKainNeedUpdate = true;
           valCom = true;
         }
+        // Then check commands allowed in HW mode
         if (eKSEC >= SEC_HWR) {
           // !xyzt: change manufacturer UUID code
           if (ch == '!') {
@@ -898,7 +946,7 @@ void loop() {
             valCom = true;
           }
           // Oxxxx: define HW options (BAT, LED, BUZ..)
-          if ((ch == 'O') || (ch == 'o')) {
+          if (ch == 'O') {
             uint16_t val = readBLE16hex();
             uint16_t iv;
             // Assign VBat table
@@ -930,7 +978,7 @@ void loop() {
             valCom = true;
           }
           // Calibrate VBat - will take a day or so
-          if ((ch == 'C') || (ch == 'c')) {
+          if (ch == 'C') {
             if (readBLE16hex() == eKairnCodeLow) {
               Serial.println("[ERR] you should remove the USB connection");
               eKairnStop = true;  // needed in case of deconnection
@@ -941,7 +989,7 @@ void loop() {
             valCom = true;
           }
           // Dump the QSPI Memory
-          if ((ch == 'D') || (ch == 'd')) {
+          if (ch == 'D') {
             // address is BBBB BB0L LLLL LLLL
             // where B is bit for block number and L for line number
             uint32_t adl = readBLE16hex();
@@ -970,7 +1018,7 @@ void loop() {
 
     // ----- Security level management
     // Check change in security level to ERM
-    if ((ch == 'K') || (ch == 'k')) {
+    if (ch == 'K') {
       if (valCom = (readBLE16hex() == eKairnCurrent.eKairnERMKey)) {
         eKSEC = SEC_ERM;
         eKSEChasChanged = true;
@@ -1004,23 +1052,7 @@ void loop() {
     }
     // Update multicolor led with Security level
     if (eKSEChasChanged) {
-      digitalWrite(LED_BLUE, HIGH);
-      digitalWrite(LED_GREEN, HIGH);
-      digitalWrite(LED_RED, HIGH);
-      switch (eKSEC) {
-        case SEC_USR:                   // BLUE
-          digitalWrite(LED_BLUE, LOW);  // turn the BLUE LED ON
-          break;
-        case SEC_ERM:                    // GREEN
-          digitalWrite(LED_GREEN, LOW);  // turn the BLUE LED ON
-          break;
-        case SEC_FAB:                   // PURPLE
-          digitalWrite(LED_BLUE, LOW);  // turn the BLUE LED ON
-          digitalWrite(LED_RED, LOW);   // turn the RED LED ON
-          break;
-        case SEC_HWR:                  // RED
-          digitalWrite(LED_RED, LOW);  // turn the RED LED ON
-      }
+      showSecurityLED();
       eKSEChasChanged = false;
     }
   }
