@@ -22,8 +22,8 @@
 #include "nrf_rtc.h"
 
 // Release informations
-static const uint32_t EKAIRN_FW_VERSION_HEX = 0x07C0;
-#define EKAIRN_FW_VERSION_STR "V07.c.0 26/05/2026"
+static const uint32_t EKAIRN_FW_VERSION_HEX = 0x07B0;
+#define EKAIRN_FW_VERSION_STR "V07.b.0 26/05/2026"
 
 // ------------- Compilation Options --------------------
 // define EK_LOWPOW for low power mode (use in production mode)
@@ -102,16 +102,16 @@ static struct eKairnParam eKairnDefault = {
   5,                  // Tx Level = -4dBm
   320,                // Period is 200ms
   0,                  // no Fast Reset
-  1,                  // MEGA LED
-  1,                  // BUZZER
-  3,                  // Battery type 550mAH
+  0,                  // MEGA LED
+  0,                  // BUZZER
+  1,                  // Battery type 550mAH
   0x0059,             // Manufacturer: default Nordic
   0,                  // Timeout (expressed in x5 Minutes)
   0x415D6365,         // HWR Key
   0xCAFE,             // FAB Key
   0x1234,             // ERM Key
   0,                  // ePaper display
-  1,                  // Solar
+  0,                  // Solar
   0,                  // ePaper Display rotation
   "eKairn by fbd38",  // Display Message
   0xA5A5CAFE          // Void
