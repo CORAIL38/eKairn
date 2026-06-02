@@ -4,7 +4,7 @@
 //  Author: fbd38
 //  Release: 2.2.0
 //  Date:   06/06/2024
-//  Update: 27/04/2026
+//  Update: 05/05/2026
 //
 // Batery voltage is expressed in Volt (f format) and mV (uint16_t)
 //  Discharge Battery must be done at about 1/10 of C which gives
@@ -63,12 +63,13 @@ static VbatPoint VbatMiddleTable550mAH[8] = {
 };
 
 // Setup for solar supercap 50F, 50mAH equivalent Battery
-static VbatPoint VbatMiddleTable50mAH[5] = {
-  { .v = 4000, .t = 100 },
-  { .v = 3950, .t = 90 },
-  { .v = 3400, .t = 10 },
-  { .v = 3350, .t = 0 },  // last point must have t=0
-  { .v = 0, .t = 180 },  // Last point is duration in minutes of calibration which give an idea of the battery capacity
+static VbatPoint VbatMiddleTable50mAH[6] = {
+  { .v = 3800, .t = 100 },
+  { .v = 3750, .t = 97 },
+  { .v = 3500, .t = 50 },
+  { .v = 3300, .t = 13 },  // last point must have t=0
+  { .v = 3000, .t = 0 },   // last point must have t=0
+  { .v = 0, .t = 180 },    // Last point is duration in minutes of calibration which give an idea of the battery capacity
 };
 
 // Calibration could depends of the board. It can be performed by measuring the battery voltage with a multimeter
@@ -81,6 +82,25 @@ void SetVBatMeasurement(void) {
   digitalWrite(VBAT_ENABLE, LOW);    //Enable
   analogReference(AR_INTERNAL_2_4);  //Vref=2.4V
   analogReadResolution(12);          //12bits
+}
+
+float ReadTemp(void) {
+  /* [TODO] to be debugged - as of today, perform a reset
+  // Trigger a new temperature measurement
+  NRF_TEMP->TASKS_START = 1;
+  // Wait for the measurement to complete (DATARDY event)
+  while (NRF_TEMP->EVENTS_DATARDY == 0) {
+    // Busy wait or yield
+  }
+  NRF_TEMP->EVENTS_DATARDY = 0;  // Clear the event flag
+  // Read the raw value (0.25°C steps)
+  int32_t raw_temp = NRF_TEMP->TEMP;
+  NRF_TEMP->TASKS_STOP = 1; // Stop the temperature measurement. 
+  */
+  int32_t raw_temp = 100;  // [TODO] line to remove when bug fixed
+  // Convert to actual Celsius (divide by 4.0 or multiply by 0.25)
+  float celsius = raw_temp * 0.25;
+  return (celsius);
 }
 
 // Perform a VBat voltage Read
