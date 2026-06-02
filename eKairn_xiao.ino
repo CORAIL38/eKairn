@@ -96,7 +96,7 @@ static struct eKairnParam eKairnDefault = {
   .12345678901234567890123456789012 
   */
   "eKairn7        ",  // Name of the device
-  51,                 // poste = P51
+  255,                // poste = P51
   0x9999,             // Major = 9999
   1,                  // Vikazimut type
   5,                  // Tx Level = -4dBm
