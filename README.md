@@ -12,9 +12,7 @@ Rev 7.b.x (Beta)  - 26/05/2026
 [TODO]
 1) Implement "A" Command
 2) Solve Issue number 2) by properly closing the SPI (see explaination)
-2) When ERM key is 0000 enter directely in ERM mode when connecting.
-3) When FAM key is 0000 enter directely in FAM mode when connecting.
-4) Implement Buzzer (and MegaLED) generic GPIO function: No, ActiveHigh, ActiveLow, OpenDrain
+3) Implement Buzzer (and MegaLED) generic GPIO function: No, ActiveHigh, ActiveLow, OpenDrain
 
 [WHISH LIST]
 1) RTC with wakeup on a due time. Cycling (for example operates 5H every 7 days).
