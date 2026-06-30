@@ -11,14 +11,6 @@
  All text above, and the splash screen below must be included in
  any redistribution
 *********************************************************************/
-// Déclaration de la fonction du SoftDevice (au cas où elle ne serait pas dans les headers du BSP)
-#define NRF_SOC_SD_TEMP_GET_ID 0x52 // ID interne de l'appel système du SoftDevice
-
-extern "C" {
-  // Cette fonction renvoie la température sous forme d'entier (unités de 0.25°C)
-  // Elle est protégée et compatible avec le BLE actif
-  uint32_t sd_temp_get(int32_t * p_temp);
-}
 float temperatureAtConnection = 0.0;
 
 #include <Adafruit_TinyUSB.h> // <--- AJOUTER CETTE LIGNE (Obligatoire pour le package standard)
