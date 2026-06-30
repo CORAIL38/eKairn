@@ -11,6 +11,17 @@
  All text above, and the splash screen below must be included in
  any redistribution
 *********************************************************************/
+// Déclaration de la fonction du SoftDevice (au cas où elle ne serait pas dans les headers du BSP)
+#define NRF_SOC_SD_TEMP_GET_ID 0x52 // ID interne de l'appel système du SoftDevice
+
+extern "C" {
+  // Cette fonction renvoie la température sous forme d'entier (unités de 0.25°C)
+  // Elle est protégée et compatible avec le BLE actif
+  uint32_t sd_temp_get(int32_t * p_temp);
+}
+float temperatureAtConnection = 0.0;
+
+#include <Adafruit_TinyUSB.h> // <--- AJOUTER CETTE LIGNE (Obligatoire pour le package standard)
 
 #include <bluefruit.h>
 
@@ -58,7 +69,7 @@ enum eKairnSecurityLevel {
   SEC_USR = 0,  // only read
   SEC_ERM = 1,  // can program the device (M,P,T,W,F,A), ERM = Electronic Race Management
   SEC_FAB = 2,  // can change name of the device
-  SEC_HWR = 3,  // can chage the Hardware setup
+  SEC_HWR = 3,  // can change the Hardware setup
 } eKSEC;
 
 // -----------------------------------------------------------------
@@ -158,7 +169,7 @@ void eKairnParamDump(eKairnParam ekp) {
 #define EKAIRN_MANU_STR "eKairn community"
 #define EKAIRN_MODEL_STR "eKairn Solar"
 
-// -------- Define QSPI memroy organisation ---------
+// -------- Define QSPI memory organization ---------
 // Contains FW revision number, use to reload the whole FLASH when FW changes
 #define QSPI_mem_BOOT 0
 // Default HW Configuration, can be modified in HWR and FAB mode
@@ -286,7 +297,7 @@ void setup() {
   //  eKairnParamDump(eKairnCurrent);
   // Connect the QSPI
   if (QSPI_mem_connect()) {
-    Serial.println("[QSPI] Memory connected");
+    Serial.println(F("[QSPI] Memory connected"));
     // Check if the FW has changed (last 4 bits are not taken into account)
     int32_t qmem_frwn;
     QSPI_mem_read(QSPI_mem_BOOT, &qmem_frwn, sizeof(qmem_frwn));
@@ -303,13 +314,13 @@ void setup() {
     }
     // Recover default parameters from the QSPI memory
     if (QSPI_mem_readConfig(QSPI_mem_SYSTEM, &eKairnFactory, &eKairnDefault, sizeof(eKairnParam))) {
-      Serial.println("[QSPI] Factory parameters recovered");
+      Serial.println(F("[QSPI] Factory parameters recovered"));
     }
     if (QSPI_mem_readConfig(QSPI_mem_CONFIG, &eKairnCurrent, &eKairnFactory, sizeof(eKairnParam))) {
-      Serial.println("[QSPI] Current parameters recovered");
+      Serial.println(F("[QSPI] Current parameters recovered"));
     }
     QSPI_mem_disconnect();  // To save power
-  } else Serial.println("[QSPI] ERROR cannot connect");
+  } else Serial.println(F("[QSPI] ERROR cannot connect"));
 
   if (!eKairnCurrent.eKairnFastReset) {
     // First Blue Flash
@@ -320,7 +331,7 @@ void setup() {
   }
   // Check the Battery
   if (!initVBatTable(eKairnCurrent.eKairnHWBat)) {
-    Serial.println("[QSPI] Error recovering VBat parameters, reload default");
+    Serial.println(F("[QSPI] Error recovering VBat parameters, reload default"));
     digitalWrite(LED_RED, LOW);   // turn the LED on (HIGH is the voltage level)
     delay(1000);                  // wait for a second
     digitalWrite(LED_RED, HIGH);  // turn the LED off by making the voltage LOW
@@ -434,7 +445,21 @@ void startAdv(void) {
  * @param conn_handle connection where this event happens
  */
 void connect_callback(uint16_t conn_handle) {
+  
+  int32_t raw_temp = 0;
+  
+  // Le SoftDevice Pile BLE) vient de valider la connexion, il est actif et gère le timing.
+  // L'appel à sd_temp_get() est donc 100% sûr ici.
+  if (sd_temp_get(&raw_temp) == 0) {
+    temperatureAtConnection = raw_temp * 0.25;
+  }
 
+  // Exemple : Envoyer immédiatement cette température dans une caractéristique GATT
+  // ou l'utiliser pour ajuster des paramètres de votre application.
+  Serial.print("Connexion établie ! Température mesurée : ");
+  Serial.print(temperatureAtConnection);
+  Serial.println(" °C");
+  
   // Get the reference to current connection
   BLEConnection *connection = Bluefruit.Connection(conn_handle);
 
@@ -491,12 +516,12 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
     }
   }
   // Stop Advertising and restart with new Marker value
-  Serial.println("EKairn Stop Advertising");
+  Serial.println(F("EKairn Stop Advertising"));
   Bluefruit.Advertising.stop();  // Stop advertising immediatly
   delay(200);                    // To be sure it ends
   // Check if we nee to update the QSPI memeory configuration
   if (eKainNeedUpdate) {
-    Serial.println("EKairn QSPI Update");
+    Serial.println(F("EKairn QSPI Update"));
     if (QSPI_mem_connect()) {
       // write the new configuration into the QSPI memory
       if (QSPI_mem_writeConfig(QSPI_mem_CONFIG, &eKairnCurrent, sizeof(eKairnParam))) {
@@ -508,7 +533,7 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
       QSPI_mem_disconnect();
     }
     if (eKainFactoryNeedUpdate) {
-      Serial.println("EKairn QSPI Factory Update");
+      Serial.println(F("EKairn QSPI Factory Update"));
       if (QSPI_mem_connect()) {
         // write the new configuration into the QSPI memory
         if (QSPI_mem_writeConfig(QSPI_mem_SYSTEM, &eKairnFactory, sizeof(eKairnParam))) {
@@ -528,7 +553,7 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
   // Restart the eBeacon
   if (!eKairnStop) {
     startAdv();
-    Serial.println("EKairn Restart Advertising");
+    Serial.println(F("EKairn Restart Advertising"));
     digitalWrite(LED_BLUE, HIGH);   // turn the BLUE LED OFF
     digitalWrite(LED_GREEN, HIGH);  // turn the GREEN LED OFF
     digitalWrite(LED_RED, HIGH);    // turn the RED LED OFF
@@ -742,14 +767,8 @@ void loop() {
       float VBat = ReadVbat();
       Serial.print("VBat = ");
       char cvbat[64];
-      sprintf(cvbat, "%5.3f V = %3d %% (%6.0f)", VBat, ConvertVBatInPercent(VBat), BatCapacityRemaining(VBat));
-      Serial.println(cvbat);
-      bleuart.write(cvbat, strlen(cvbat));
-      // Perform a Temperature acquisition
-      float Temp = ReadTemp();
-      Serial.printf("Temp = ");
-      sprintf(cvbat, "; T = %6.2f°C ", Temp);
-      Serial.println(cvbat);
+      sprintf(cvbat, "%5.3f V = %3d %% (%6.0f); T = %6.2f°C\n", VBat, ConvertVBatInPercent(VBat), BatCapacityRemaining(VBat), temperatureAtConnection);
+      Serial.print(cvbat);
       bleuart.write(cvbat, strlen(cvbat));
       valCom = true;
     }
@@ -856,7 +875,7 @@ void loop() {
       }
       // Stop the device, will rerquire a reset or power up to restart
       if (ch == 'Q') {
-        Serial.println("[Device Stop] use RESET Magnet or PWR ON to restart");
+        Serial.println(F("[Device Stop] use RESET Magnet or PWR ON to restart"));
         eKairnStop = true;
         valCom = true;
       }
@@ -980,7 +999,7 @@ void loop() {
           // Calibrate VBat - will take a day or so
           if (ch == 'C') {
             if (readBLE16hex() == eKairnCodeLow) {
-              Serial.println("[ERR] you should remove the USB connection");
+              Serial.println(F("[ERR] you should remove the USB connection"));
               eKairnStop = true;  // needed in case of deconnection
               eKairnVbatCalibration = true;
               VBatCalibration(eKairnFuncHiPow, eKairnFuncLoPow);  // 10mV step --> about 60 points
