@@ -513,6 +513,11 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
   delay(200);                    // To be sure it ends
   // Check if we nee to update the QSPI memeory configuration
   if (eKainNeedUpdate) {
+
+    //On vide les anciens paquets mis en cache.
+    Bluefruit.Advertising.clearData();
+    Bluefruit.ScanResponse.clearData();
+
     Serial.println(F("EKairn QSPI Update"));
     if (QSPI_mem_connect()) {
       // write the new configuration into the QSPI memory
@@ -599,7 +604,7 @@ void help() {
     bleuart.write(disp, strlen(disp));
     if (eKSEC >= SEC_FAB) {
       sprintf(disp, "\r\n");
-      sprintf(disp, "Ncccccccccc: Set Mame\r\n");
+      sprintf(disp, "Ncccccccccc: Set Name\r\n");
       strcat(disp, "Exxxx: set EMR key");
       Serial.println(disp);
       bleuart.write(disp, strlen(disp));
