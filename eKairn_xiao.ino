@@ -30,7 +30,7 @@ static const uint32_t EKAIRN_FW_VERSION_HEX = 0x07B0;
 
 // ------------- Compilation Options --------------------
 // define EK_LOWPOW for low power mode (use in production mode)
-// do not define EK_LOWPOW for develeopment mode
+// do not define EK_LOWPOW for development mode
 #define EK_LOWPOW
 
 // Board Pin assignment
@@ -564,7 +564,7 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
     delay(1000);
     NRF_POWER->SYSTEMOFF = 1;  // Trigger System OFF --> need RESET to Retstart
   }
-// Then we need no more the main loop, so we goe in low power state
+// Then we need no more the main loop, so we go in low power state
 #ifdef EK_LOWPOW
   if (!eKairnVbatCalibration) suspendLoop();
 #endif
@@ -577,12 +577,12 @@ void help() {
   strcat(disp, "I: get Informations\r\n");
   strcat(disp, "S: get Setup\r\n");
   strcat(disp, "V: get battery Voltage\r\n");
-  strcat(disp, "Kxxxx: Enter programing");
+  strcat(disp, "Kxxxx: Enter programing\r\n");
   //  Then display on both screens
-  Serial.println(disp);
+  Serial.print(disp);
   bleuart.write(disp, strlen(disp));
   if (eKSEC >= SEC_ERM) {
-    sprintf(disp, "\r\n");
+    //sprintf(disp,(disp, "\r\n");
     sprintf(disp, "Mddd: set Marker\r\n");
     strcat(disp, "Tdd: set Tx power\r\n");
     strcat(disp, "Pdddd: set Period\r\n");
@@ -590,7 +590,7 @@ void help() {
     strcat(disp, "Z: Factory setup\r\n");
     strcat(disp, "Rx: fast Reset on/off\r\n");
     strcat(disp, "Jxxxx: set maJor\r\n");
-    strcat(disp, "Q: Quite device\r\n");
+    strcat(disp, "Q: Quit device\r\n");
     if (eKairnCurrent.eKairnHWMegaLED)
       strcat(disp, "L, l: manage mega LED\r\n");
     if (eKairnCurrent.eKairnHWBuzzer)
@@ -599,24 +599,25 @@ void help() {
       strcat(disp, "Gd: rotate display\r\n");
       strcat(disp, "Acccccccccccccccc: display message\r\n");
     }
-    strcat(disp, "$xxxx: Enter FAB mode");
-    Serial.println(disp);
+    strcat(disp, "$xxxx: Enter FAB mode\r\n");
+    Serial.print(disp);
     bleuart.write(disp, strlen(disp));
     if (eKSEC >= SEC_FAB) {
-      sprintf(disp, "\r\n");
+      //sprintf(disp, "\r\n");
+      // Do not overwrite disp.
       sprintf(disp, "Ncccccccccc: Set Name\r\n");
-      strcat(disp, "Exxxx: set EMR key");
-      Serial.println(disp);
+      strcat(disp, "Exxxx: set EMR key\r\n");
+      Serial.print(disp);
       bleuart.write(disp, strlen(disp));
       if (eKSEC >= SEC_HWR) {
-        sprintf(disp, "\r\n");
+        //sprintf(disp, "\r\n");
         sprintf(disp, "!xxxx: set manufacturer\r\n");
         strcat(disp, "Oxxxx: set hw Options\r\n");
         strcat(disp, "Cxxxx: VBat Calibrate\r\n");
         strcat(disp, "Dxxxx: Dump Flash mem.\r\n");
         strcat(disp, "Fxxxx: set FAB key\r\n");
-        strcat(disp, ".A5F0: clear Flash");
-        Serial.println(disp);
+        strcat(disp, ".A5F0: clear Flash\r\n");
+        Serial.print(disp);
         bleuart.write(disp, strlen(disp));
       }
     }
@@ -669,8 +670,16 @@ uint32_t readBLE32hex() {
 // Function to get a 16 bit signed integer from the BLE UART
 int16_t readBLE16dec() {
   char st[8] = "";
+  // Si le buffer de bleuart contient 8 ou plus caractères
+  // le caractère de fin de chaine ne peut être stocké.
   bleuart.read(st, 8);
+  Serial.print("st(");
+  Serial.print(st);
+  Serial.println(")");
   int16_t val;
+  // Si un caractère de l'argument n'est pas entier, 
+  // sscanf s'arrête et retourne ce qu'il a pu lire.
+  // Le mauvais caractère et les suivants sont perdus.
   sscanf(st, "%d", &val);
   Serial.print(" (");
   Serial.print(val);
@@ -681,6 +690,18 @@ int16_t readBLE16dec() {
 void loop() {
   // loop is already suspended, CPU will not run loop() at all
   // Forward from BLEUART to HW Serial
+
+  // Les commandes sont envoyées sur 1 caractère.
+  // Certaines commandes sont sans arguments.
+  // Pour la plupart des commandes avec argument, un nombre précis de caractères sont requis après le caractère de la commande.
+  // Pour certaines commandes, le nombre de caractères peut varier. 
+  // Pour M, de 1 min à 3 max.
+  // Pour P, de 1 min à 3 max.
+  // Pour T, de 1 min à 3 max.
+  // Pour W, de 1 min à 3 max.
+  // En général, les caractères attendus doivent respecter des règles. Nombres dans un intervalle donné. Mot clés prédéfinis, caractères représentant un nombre hexadécimal, etc...
+  // Enfin, après avoir lu les caractères attendus par la commande, si il reste des caractère dans le buffer de l'uart, il est nécessaire de le purger et éventuellement ne pas exécuter la commande et/ou générer un message d'erreur
+  
   while (bleuart.available()) {
     uint8_t ch;
     bool valCom = false;
@@ -707,15 +728,15 @@ void loop() {
     if (ch == 'S') {
       // Display status
       char st[16] = "";
-      sprintf(st, "Marker = %3d", eKairnCurrent.eKairnMarker);
-      if (EK_FORCE_START) sprintf(st, "Marker = START");
-      if (EK_FORCE_END) sprintf(st, "Marker = END");
+      sprintf(st, "Marker = %3d\r\n", eKairnCurrent.eKairnMarker);
+      if (EK_FORCE_START) sprintf(st, "Marker = START\r\n");
+      if (EK_FORCE_END) sprintf(st, "Marker = END\r\n");
       // Write current Tx  Power
       char st2[16] = "";
-      sprintf(st2, "Tx = %2d dBm", nRF_TX[eKairnCurrent.eKairnTx]);
+      sprintf(st2, "Tx = %2d dBm\r\n", nRF_TX[eKairnCurrent.eKairnTx]);
       // Write current Period
       char st3[20] = "";
-      sprintf(st3, "Period = %5.0f ms", ((float)eKairnCurrent.eKairnPeriod) * 0.62);
+      sprintf(st3, "Period = %5.0f ms\r\n", ((float)eKairnCurrent.eKairnPeriod) * 0.62);
       // Write current Timeout
       char st4[40] = "";
       if (eKairnCurrent.eKairnTimeout != 0) {
@@ -723,37 +744,33 @@ void loop() {
         int16_t days = tmps / 288;
         int16_t hours = (tmps - days * 288) / 12;
         int16_t mins = (tmps - days * 288 - hours * 12) * 5;
-        sprintf(st4, "Timeout = %2d d, %2d h, %2d m", days, hours, mins);
-      } else sprintf(st4, "Timeout = 0");
+        sprintf(st4, "Timeout = %2d d, %2d h, %2d m\r\n", days, hours, mins);
+      } else sprintf(st4, "Timeout = 0\r\n");
       char disp[255] = "";
       sprintf(disp, st);
-      strcat(disp, "\n\r");
       strcat(disp, st2);
-      strcat(disp, "\n\r");
       strcat(disp, st3);
-      strcat(disp, "\n\r");
       strcat(disp, st4);
-      Serial.println(disp);
+      Serial.print(disp);
       bleuart.write(disp, strlen(disp));
       if (eKSEC >= SEC_ERM) {
         char str[20] = "";
-        sprintf(disp, "\n\r%s", eKairnCurrent.eKairnName);
-        strcat(disp, "\n\r");
+        sprintf(disp, "Name = %s\n\r", eKairnCurrent.eKairnName);
         sprintf(str, "Major = %4x\n\r", eKairnCurrent.eKairnMajor);
         strcat(disp, str);
         if (eKairnCurrent.eKairnFastReset) strcat(disp, "Fast Reset\n\r");
-        sprintf(str, "ERM Key = %4x", eKairnCurrent.eKairnERMKey);
+        sprintf(str, "ERM Key = %4x\n\r", eKairnCurrent.eKairnERMKey);
         strcat(disp, str);
-        Serial.println(disp);
+        Serial.print(disp);
         bleuart.write(disp, strlen(disp));
         if (eKSEC >= SEC_FAB) {
           char str[20] = "";
           sprintf(disp, "Manuf. UID = %4x\n\r", eKairnCurrent.eKairnHWManuf);
           sprintf(str, "HWR = %d, %d, %d\n\r", eKairnCurrent.eKairnHWBat, eKairnCurrent.eKairnHWMegaLED, eKairnCurrent.eKairnHWBuzzer);
           strcat(disp, str);
-          sprintf(str, "FAB Key = %4x", eKairnCurrent.eKairnFABKey);
+          sprintf(str, "FAB Key = %4x\n\r", eKairnCurrent.eKairnFABKey);
           strcat(disp, str);
-          Serial.println(disp);
+          Serial.print(disp);
           bleuart.write(disp, strlen(disp));
         }
       }
@@ -771,13 +788,15 @@ void loop() {
     }
     // Then check commands allowed in ERM mode
     if (eKSEC >= SEC_ERM) {
-      if ((ch == 'M') || (ch == 'm')) {
+      if (ch == 'M') {
         char st[8] = "";
         uint16_t nval = readBLE16dec();
+        //Serial.println(nval);
         if ((nval < 0) || (nval > 999)) {
-          const char err[] = "ERROR Invalid Value, must be [0..999]";
-          Serial.println(err);
-          bleuart.write(err, sizeof(err));
+          const char err[] = "ERROR Invalid Value, must be [0..999]\n";
+          Serial.print(err);
+          //bleuart.write(err, sizeof(err));
+          bleuart.write(err);
         } else {
           eKairnCurrent.eKairnMarker = nval;
           eKainNeedUpdate = true;
@@ -788,16 +807,17 @@ void loop() {
           // Update the display if any
           if (eKairnCurrent.eKairnHWDisplay)
             eKairnDisplayDigit(eKairnCurrent.eKairnDispRot, eKairnCurrent.eKairnMarker, eKairnCurrent.eKairnMessage);
+          valCom = true;
         }
-        valCom = true;
       }
       // Set TX level
       if (ch == 'T') {
         int16_t nval = readBLE16dec();
         if ((nval < 0) || (nval > 13)) {
-          const char err[] = "ERROR Invalid Value, must be [0..13]";
-          Serial.println(err);
-          bleuart.write(err, sizeof(err));
+          const char err[] = "ERROR Invalid Value, must be [0..13]\n";
+          Serial.print(err);
+          //bleuart.write(err, sizeof(err));
+          bleuart.write(err);
         } else {
           eKairnCurrent.eKairnTx = nval;
           eKainNeedUpdate = true;
@@ -811,9 +831,10 @@ void loop() {
       if (ch == 'P') {
         int16_t nval = readBLE16dec();
         if ((nval < 100) || (nval > 1600)) {
-          const char err[] = "ERROR Invalid Value, must be [100..1600]";
-          Serial.println(err);
-          bleuart.write(err, sizeof(err));
+          const char err[] = "ERROR Invalid Value, must be [100..1600]\n";
+          Serial.print(err);
+          //bleuart.write(err, sizeof(err));
+          bleuart.write(err);
         } else {
           eKairnCurrent.eKairnPeriod = nval;
           eKainNeedUpdate = true;
@@ -829,7 +850,9 @@ void loop() {
         if ((nval < 0) || (nval > 8928)) {
           const char err[] = "ERROR Invalid Value, must be [0..8928] (31 jours max!)";
           Serial.println(err);
-          bleuart.write(err, sizeof(err));
+          // sizeof send end of chain /0 character.
+          //bleuart.write(err, sizeof(err));
+          bleuart.write(err);
         } else {
           eKairnCurrent.eKairnTimeout = nval;
           eKainNeedUpdate = true;
@@ -898,9 +921,10 @@ void loop() {
         if (ch == 'G') {
           int16_t nval = readBLE16dec();
           if ((nval < 0) || (nval > 3)) {
-            const char err[] = "ERROR Invalid Value, must be [0..3]";
-            Serial.println(err);
-            bleuart.write(err, sizeof(err));
+            const char err[] = "ERROR Invalid Value, must be [0..3]\n";
+            Serial.print(err);
+            //bleuart.write(err, sizeof(err));
+            bleuart.write(err);
           } else {
             eKairnCurrent.eKairnDispRot = nval;
             eKainNeedUpdate = true;
@@ -914,9 +938,36 @@ void loop() {
           }
         }
         if (ch == 'A') {
-          eKairnFuncBuzz();
-          valCom = true;
-          eKairnDisplayDigit(eKairnCurrent.eKairnDispRot, eKairnCurrent.eKairnMarker, eKairnCurrent.eKairnMessage);
+          if (eKairnCurrent.eKairnHWBuzzer) {
+            eKairnFuncBuzz();
+          }
+          char new_msg[16];
+          bool err = false;
+          int i = 0;
+          // Si on s'arrête à 8 on risque de laisser un reliquat dans le buffer qui sera ensuite utilisé comme commande suivante.
+          while (i < 16) {
+            if (bleuart.available()) {
+              new_msg[i++] = (uint8_t)bleuart.read();
+            } else {
+            // Si le nom est plus court que 16, on peut faire du "padding", plutot que d'obliger l'utilisateur à le faire.
+              new_msg[i++] = ' ';
+            }
+          }
+          // Si le nom est plus long que 8, on ne met pas le nom a jour et valcom reste à false.
+          if (!bleuart.available()) {
+            for (i = 0; i < 16; i++) eKairnCurrent.eKairnMessage[i] = new_msg[i];
+            Serial.print("Message changed to [");
+            Serial.print(eKairnCurrent.eKairnMessage);
+            Serial.println("]");
+            if (eKSEC >= SEC_FAB) {
+              for (i = 0; i < 16; i++) eKairnFactory.eKairnMessage[i] = eKairnCurrent.eKairnMessage[i];
+              eKainFactoryNeedUpdate = true;
+            }
+            eKairnDisplayDigit(eKairnCurrent.eKairnDispRot, eKairnCurrent.eKairnMarker, eKairnCurrent.eKairnMessage);
+            eKainNeedUpdate = true;
+            valCom = true;
+          }
+
         }
       }
       // Then check commands allowed in FAB mode
@@ -926,20 +977,26 @@ void loop() {
           char new_name[10];
           bool err = false;
           int i = 0;
-          while ((i < 8) && (!err)) {
-            err = !bleuart.available();
-            if (!err) new_name[i++] = (uint8_t)bleuart.read();
+          // Si on s'arrête à 8 on risque de laisser un reliquat dans le buffer qui sera ensuite utilisé comme commande suivante.
+          while (i < 8) {
+            if (bleuart.available()) {
+              new_name[i++] = (uint8_t)bleuart.read();
+            } else {
+            // Si le nom est plus court que 8, on peut faire du "padding", plutot que d'obliger l'utilisateur à le faire.
+              new_name[i++] = ' ';
+            }
           }
-          if (!err) {
+          // Si le nom est plus long que 8, on ne met pas le nom a jour et valcom reste à false.
+          if (!bleuart.available()) {
             for (i = 0; i < 8; i++) eKairnCurrent.eKairnName[i] = new_name[i];
             Serial.print("Name changed to [");
             Serial.print(eKairnCurrent.eKairnName);
             Serial.println("]");
+            for (i = 0; i < 8; i++) eKairnFactory.eKairnName[i] = eKairnCurrent.eKairnName[i];
+            eKainFactoryNeedUpdate = true;
+            eKainNeedUpdate = true;
+            valCom = true;
           }
-          for (i = 0; i < 8; i++) eKairnFactory.eKairnName[i] = eKairnCurrent.eKairnName[i];
-          eKainFactoryNeedUpdate = true;
-          eKainNeedUpdate = true;
-          valCom = true;
         }
         // Exxx set EMR key
         if (ch == 'E') {
@@ -1058,14 +1115,48 @@ void loop() {
     }
     // In case of error command
     if (!valCom) {
-      const char err[] = "ERROR Invalid Key, Command or Mode";
-      uint8_t ch;
-      Serial.println(err);
-      bleuart.write(err, sizeof(err));
+      // l'instruction suivante stocke automatiquement err en mémoire flash.
+      // La macro F() est inutile sur ESP32 et nRF52840. C'est un héritage de l'Arduino uno.
+      const char err[] = "ERROR Invalid Key, Command or Mode\n";
+      //uint8_t ch;
+      Serial.print(err);
+      // sizeof inclut le caractère de fin de chaine dans son calcul.
+      // strlen ne comptabilise que les caractères.
+      // On a le choix entre les 2 instructions suivantes.
+      // bleuart.write(err, sizeof(err)-1);
+      // bleuart.write(err, strlen(err));
+      // Mais la methode write s'arrête toute seule sur la caractère nul de fin de chaîne. 
+      bleuart.write(err);
+      /*
       while (bleuart.available()) {  // Flush imput buffer
         ch = (uint8_t)bleuart.read();
-      }
+        Serial.print(ch);
+       }
+      Serial.println();
+      */
     }
+    // In case of input buffer not empty.
+    if (bleuart.available()) {
+      // l'instruction suivante stocke automatiquement err en mémoire flash.
+      // La macro F() est inutile sur ESP32 et nRF52840. C'est un héritage de l'Arduino uno.
+      const char err[] = "ERROR Invalid Key. Buffer not empty\n";
+      //uint8_t ch;
+      Serial.print(err);
+      Serial.print(" > ");
+      // sizeof inclut le caractère de fin de chaine dans son calcul.
+      // strlen ne comptabilise que les caractères.
+      // On a le choix entre les 2 instructions suivantes.
+      // bleuart.write(err, sizeof(err)-1);
+      // bleuart.write(err, strlen(err));
+      // Mais la methode write s'arrête toute seule sur la caractère nul de fin de chaîne. 
+      bleuart.write(err);
+      while (bleuart.available()) {  // Flush imput buffer
+        ch = (uint8_t)bleuart.read();
+        Serial.print((char)ch);
+      }
+      Serial.println();
+    }
+
     // Update multicolor led with Security level
     if (eKSEChasChanged) {
       showSecurityLED();
