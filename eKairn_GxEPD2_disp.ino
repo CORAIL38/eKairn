@@ -47,7 +47,7 @@ void eKairnDisplayDigit(uint16_t rot, uint16_t poste, char mess[]) {
   display.setRotation(rot);
   char Digit[4];
   display.setFont(&FreeSansBold80pt7b);
-  if (poste == 0) {
+  if ((poste>= 0) && (poste<31)) {
     sprintf(Digit, "D");
   } else if (poste > 255) {
     sprintf(Digit, "A");
