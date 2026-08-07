@@ -105,7 +105,8 @@ void QSPI_mem_dump(int16_t numBlock4K, int16_t line) {
   // print values
   for (int16_t ii = 0; ii < line; ii++) {
     // Display in HEX
-    sprintf(str, "[%06X] ", qaddr + ii * 8);
+    //To avoid compiler warning
+    sprintf(str, "[%06lX] ", qaddr + ii * 8);
     for (int16_t iii = 0; iii < 8; iii++) {
       sprintf(st, "%02X ", qval[ii * 8 + iii]);
       strcat(str, st);

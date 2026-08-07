@@ -207,12 +207,13 @@ bool initVBatTable(int DefaultBatTable) {
 //     LoPow (stopping the C/10 current)
 //
 void VBatCalibration(void funcHiPow(), void funcLoPow()) {
-  char str[64];  // reserve enought room
+  // To avoid compiler warning.
+  char str[78];  // reserve enough room
   uint16_t index = 0;
   uint32_t currMillis;
   sprintf(str, "* Battery calibration Started * \r");
   bleuart.write(str, strlen(str));
-  // Test if voltage is hight enought
+  // Test if voltage is high enough
   int16_t currVolt;
   currVolt = round(ReadVbat() * 1000);
   sprintf(str, "[VBat] VbatMax = %d, VbatMin = %d, voltStep = %d, VBatAdj = %f", VbatMax100, VbatMin000, voltStep, VBatAdj);
@@ -220,12 +221,15 @@ void VBatCalibration(void funcHiPow(), void funcLoPow()) {
   if (currVolt < (VbatMax100 + voltStep)) {
     sprintf(str, "[ERR] VBat voltage is too low, please charge it\r");
     bleuart.write(str, strlen(str));
-    sprintf(str, "      VBat = %5.3f  V, it should be > %5.3f V\r", currVolt, VbatMax100 + voltStep);
+    // To avoid compiler warning
+    //sprintf(str, "      VBat = %5.3f  V, it should be > %5.3f V\r", currVolt, VbatMax100 + voltStep);
+    sprintf(str, "      VBat = %d  mV, it should be > %d V\r", currVolt, VbatMax100 + voltStep);
     bleuart.write(str, strlen(str));
   } else {
     // Go for High Power
     funcHiPow();
-    uint32_t StartMillis;
+    //To avoid compiler warning.
+    uint32_t StartMillis = 0;
     int16_t currThreshold = VbatMax100;
     do {
       // [TODO] optimize timing so that the Batery resistor not taken into account
