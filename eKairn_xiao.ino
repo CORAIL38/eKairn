@@ -29,6 +29,8 @@ static const uint32_t EKAIRN_FW_VERSION_HEX = 0x07B0;
 #define EKAIRN_FW_VERSION_STR "V07.b.0 26/05/2026"
 
 // ------------- Compilation Options --------------------
+// define VERBOSE for more detailed serial monitoring.
+#define VERBOSE
 // define EK_LOWPOW for low power mode (use in production mode)
 // do not define EK_LOWPOW for development mode
 #define EK_LOWPOW
@@ -72,7 +74,8 @@ struct eKairnParam {
   uint16_t eKairnMarker;
   uint16_t eKairnMajor;
   uint16_t eKairnType;
-  int16_t eKairnTx;
+  //To avoid compiler warning
+  uint16_t eKairnTx;
   int16_t eKairnPeriod;
   bool eKairnFastReset;
   bool eKairnHWMegaLED;
@@ -105,7 +108,7 @@ static struct eKairnParam eKairnDefault = {
   5,                  // Tx Level = -4dBm
   320,                // Period is 200ms
   0,                  // no Fast Reset
-  0,                  // MEGA LED
+  1,                  // MEGA LED
   0,                  // BUZZER
   1,                  // Battery type 550mAH
   0x0059,             // Manufacturer: default Nordic
@@ -113,10 +116,10 @@ static struct eKairnParam eKairnDefault = {
   0x415D6365,         // HWR Key
   0xCAFE,             // FAB Key
   0x1234,             // ERM Key
-  0,                  // ePaper display
+  1,                  // ePaper display
   0,                  // Solar
   0,                  // ePaper Display rotation
-  "eKairn by fbd38",  // Display Message
+  "eKairn by fbd38",  // Display Message : 15 chars + char null (\0)
   0xA5A5CAFE          // Void
 };
 
@@ -134,27 +137,49 @@ static bool eKSEChasChanged = false;
 static bool eKairnStop = false;
 static bool eKairnVbatCalibration = false;
 
+#ifdef VERBOSE
 void eKairnParamDump(eKairnParam ekp) {
   Serial.println(F("-----------------------------"));
+  Serial.print("Nom du beacon: ");
   Serial.println(ekp.eKairnName);
+  Serial.print("Numéro de poste: ");
   Serial.println(ekp.eKairnMarker);
-  Serial.println(ekp.eKairnMajor);
+  Serial.print("Major: 0x");
+  Serial.println(ekp.eKairnMajor,HEX);
   Serial.println(ekp.eKairnType);
+  Serial.print("Tx order: ");
   Serial.println(ekp.eKairnTx);
   Serial.println(ekp.eKairnPeriod);
   Serial.println(ekp.eKairnFastReset);
+  Serial.println("Hardware flags:");
+  Serial.print("\tMegaLED:");
   Serial.println(ekp.eKairnHWMegaLED);
+  Serial.print("\tBuzzer:");
   Serial.println(ekp.eKairnHWBuzzer);
+  Serial.print("\tBattery type:");
   Serial.println(ekp.eKairnHWBat);
-  Serial.println(ekp.eKairnHWManuf);
-  Serial.println(ekp.eKairnHWRKey);
-  Serial.println(ekp.eKairnFABKey);
-  Serial.println(ekp.eKairnERMKey);
+  Serial.print("\tePaper display:");
+  Serial.println(ekp.eKairnHWDisplay);
+  Serial.print("\tSolar:");
+  Serial.println(ekp.eKairnHWSolar);
+  Serial.print("Manufacturer: 0x");
+  Serial.println(ekp.eKairnHWManuf,HEX);
+  Serial.println(ekp.eKairnTimeout);
+  Serial.print("HWR Key : 0x");
+  Serial.println(ekp.eKairnHWRKey,HEX);
+  Serial.print("FAB Key : 0x");
+  Serial.println(ekp.eKairnFABKey,HEX);
+  Serial.print("ERM Key : 0x");
+  Serial.println(ekp.eKairnERMKey,HEX);
+  Serial.print("ePaper rotation: ");
   Serial.println(ekp.eKairnDispRot);
+  Serial.print("ePaper message: ");
   Serial.println(ekp.eKairnMessage);
   Serial.println(ekp.eKairnSpare);
   Serial.println(F("-----------------------------"));
 }
+#endif
+
 // Code to avoid mistakes when entering sensitive commands
 #define eKairnCodeLow 0xA5F0
 
@@ -227,7 +252,8 @@ uint16_t checkEkMarker(void) {
 
 int8_t checkTxPower(void) {
   if (eKairnCurrent.eKairnTx <= 0) return nRF_TX[0];
-  if (eKairnCurrent.eKairnTx >= sizeof(nRF_TX)) return nRF_TX[sizeof(nRF_TX)];
+  //To avoid compiler warning, but this is an error.
+  if (eKairnCurrent.eKairnTx >= sizeof(nRF_TX)) return nRF_TX[sizeof(nRF_TX)-1];
   return nRF_TX[eKairnCurrent.eKairnTx];
 }
 
@@ -244,6 +270,7 @@ void composeName(void) {
 static int16_t VLFTCount = 0;
 
 void VLFT_Routine(void) {
+  Serial.println("Entering VLFT_Routine (Bluefruit.Advertising.setStopCallback(VLFT_Routine))");
   VLFTCount--;
   if (VLFTCount <= 0) {
     digitalWrite(LED_GREEN, LOW);
@@ -281,12 +308,19 @@ void setup() {
 
   /* Initialize the serial port */
   Serial.begin(115200);
+  while(!Serial) {
+    delay(1000);
+  };
+  delay(2000);
   Serial.println(F("********* eKairn Started *********"));
 
   // Assign default values
   eKairnFactory = eKairnDefault;
   eKairnCurrent = eKairnFactory;
-  //  eKairnParamDump(eKairnCurrent);
+  #ifdef VERBOSE
+    Serial.println("----------- eKairnCurrent -----------");
+    eKairnParamDump(eKairnCurrent);
+  #endif
   // Connect the QSPI
   if (QSPI_mem_connect()) {
     Serial.println(F("[QSPI] Memory connected"));
@@ -305,11 +339,20 @@ void setup() {
       QSPI_mem_write(QSPI_mem_BOOT, &qmem_frwn, sizeof(qmem_frwn));
     }
     // Recover default parameters from the QSPI memory
+    // if configuration does not start with magic number (initialization or version change), write eKairnDefault config 
     if (QSPI_mem_readConfig(QSPI_mem_SYSTEM, &eKairnFactory, &eKairnDefault, sizeof(eKairnParam))) {
       Serial.println(F("[QSPI] Factory parameters recovered"));
+      #ifdef VERBOSE
+        Serial.println("----------- eKairnFactory -----------");
+        eKairnParamDump(eKairnFactory);
+      #endif
     }
     if (QSPI_mem_readConfig(QSPI_mem_CONFIG, &eKairnCurrent, &eKairnFactory, sizeof(eKairnParam))) {
       Serial.println(F("[QSPI] Current parameters recovered"));
+      #ifdef VERBOSE
+        Serial.println("----------- eKairnCurrent -----------");
+        eKairnParamDump(eKairnCurrent);
+      #endif
     }
     QSPI_mem_disconnect();  // To save power
   } else Serial.println(F("[QSPI] ERROR cannot connect"));
@@ -346,6 +389,7 @@ void setup() {
     }
     // Display FW version
     Serial.println(EKAIRN_FW_VERSION_STR);
+    // Serial.println(EKAIRN_FW_VERSION_HEX,HEX);
     if (eKairnCurrent.eKairnHWDisplay)
       eKairnDisplayDigit(eKairnCurrent.eKairnDispRot, eKairnCurrent.eKairnMarker, eKairnCurrent.eKairnMessage);
   }
@@ -362,8 +406,11 @@ void setup() {
   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
   // off Blue LED for lowest power consumption
   Bluefruit.autoConnLed(false);
-  Bluefruit.begin();
+  Bluefruit.begin(); 
+  Serial.printf(" TxPower : %ddBm\n",nRF_TX[eKairnCurrent.eKairnTx]);
   Bluefruit.setTxPower(checkTxPower());  // Check bluefruit.h for supported values
+  // https://github.com/adafruit/Adafruit_nRF52_Arduino/blob/master/libraries/Bluefruit52Lib/src/bluefruit.h
+  // - nRF52840: -40dBm, -20dBm, -16dBm, -12dBm, -8dBm, -4dBm, 0dBm, +2dBm, +3dBm, +4dBm, +5dBm, +6dBm, +7dBm and +8dBm.
   Serial.println(F(" BLE Started"));
 
   // composeName();
@@ -373,20 +420,32 @@ void setup() {
   bledis.setManufacturer(EKAIRN_MANU_STR);
   bledis.setModel(EKAIRN_MODEL_STR);
   bledis.setFirmwareRev(EKAIRN_FW_VERSION_STR);
+  // Note cdu : not affected by clearData() but requires setBeacon.
   beacon.setMajorMinor(eKairnCurrent.eKairnMajor, checkEkMarker());  // Vikazimut Marker value
   beacon.setManufacturer(eKairnCurrent.eKairnHWManuf);
 
+  // Note cdu setxxxCallback does not affect advertising data. 
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
   // Connect Stop routine
   Bluefruit.Advertising.setStopCallback(VLFT_Routine);
+  // Note cdu : these 2 statements does not affect advertising data. They can be placed outside startAdv at the beginning of setup()
+  Bluefruit.Advertising.setInterval(eKairnCurrent.eKairnPeriod, eKairnCurrent.eKairnPeriod);  // in unit of 0.625 ms
+  Bluefruit.Advertising.setFastTimeout(30);                                                   // number of seconds in fast mode
 
   // Configure and Start BLE Uart Service
   bleuart.begin();
   Serial.println(F(" BLE UART Service Started"));
   // Setup the advertising packet
   startAdv();
-  Serial.println(F(" BLE Advertising Service Started"));
+  Serial.println(" BLE Advertising Service Started");
+  //To make sure messages appear. 
+  Serial.flush();
+
+  #ifdef VERBOSE
+    Serial.println("----------- eKairnCurrent -----------");
+    eKairnParamDump(eKairnCurrent);
+  #endif
 
 // Suspend Loop() to save power, since we didn't have any code there
 #ifdef EK_LOWPOW
@@ -398,17 +457,22 @@ void startAdv(void) {
   // Advertising packet
   // Set the beacon payload using the BLEBeacon class populated
   // earlier in this example
+  // Note cdu : following statements are necessary after clearData()
   Bluefruit.Advertising.setBeacon(beacon);
+  // Note cdu : added in advertising data. Must be rerun after clearData()
   Bluefruit.Advertising.addTxPower();
 
   // Secondary Scan Response packet (optional)
   // Since there is no room for 'Name' in Advertising packet
   composeName();
+  Serial.print(" Device name : ");
+  Serial.println(eKairnCurrent.eKairnName);
   Bluefruit.setName(eKairnCurrent.eKairnName);
   Bluefruit.ScanResponse.addName();
 
+  // Note cdu : already done with all callbacks. Not disturbed bt clearData().
   // Connect Stop routine
-  Bluefruit.Advertising.setStopCallback(VLFT_Routine);
+  //Bluefruit.Advertising.setStopCallback(VLFT_Routine);
 
   /* Start Advertising
    * - Enable auto advertising if disconnected
@@ -420,9 +484,12 @@ void startAdv(void) {
    * - Fixed interval: 100 ms -> fast = slow = 100 ms
    */
   //Bluefruit.Advertising.setType(BLE_GAP_ADV_TYPE_ADV_NONCONN_IND);
-  Bluefruit.Advertising.restartOnDisconnect(true);
-  Bluefruit.Advertising.setInterval(eKairnCurrent.eKairnPeriod, eKairnCurrent.eKairnPeriod);  // in unit of 0.625 ms
-  Bluefruit.Advertising.setFastTimeout(30);                                                   // number of seconds in fast mode
+  // Note cdu : on utilise toujours start() dans disconnect callback. Donc restartOnDisconnect(true) est inutile.
+  // Bluefruit.Advertising.restartOnDisconnect(true);
+  
+  // Note cdu : these 2 statements does not affect advertising data. They can be placed outside startAdv at the beginning of setup()
+  //Bluefruit.Advertising.setInterval(eKairnCurrent.eKairnPeriod, eKairnCurrent.eKairnPeriod);  // in unit of 0.625 ms
+  //Bluefruit.Advertising.setFastTimeout(30);                                                   // number of seconds in fast mode
   if (eKairnCurrent.eKairnTimeout == 0) {
     Bluefruit.Advertising.start(0);  // 0 = Don't stop advertising after n seconds
   } else {
@@ -498,6 +565,7 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
 
   Serial.print("Disconnected, reason = 0x");
   Serial.println(reason, HEX);
+  Serial.println();
   if (reason != 0x13) {
     // Error disconnect
     digitalWrite(LED_RED, LOW);  // turn the LED on
@@ -508,10 +576,15 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
     }
   }
   // Stop Advertising and restart with new Marker value
-  Serial.println(F("EKairn Stop Advertising"));
-  Bluefruit.Advertising.stop();  // Stop advertising immediatly
+  // Note cdu : this should not be necessary as advertizing is stopped at connection.
+  // En Bluetooth Low Energy (BLE), la plupart des cartes et des stack BLE (comme la bibliothèque Adafruit Bluefruit nRF52) arrêtent la diffusion (Advertising) 
+  // dès qu'un client se connecte. Lors de la déconnexion, il faut spécifiquement indiquer à la carte de relancer la diffusion, soit automatiquement dans la configuration,
+  // soit manuellement dans la fonction de rappel (callback) de déconnexion.
+  // This can be checked by connecting nRF app and scanning with eKairn configurator.
+  //Serial.println(F("EKairn Stop Advertising"));
+  //Bluefruit.Advertising.stop();  // Stop advertising immediatly
   delay(200);                    // To be sure it ends
-  // Check if we nee to update the QSPI memeory configuration
+  // Check if we need to update the QSPI memory configuration
   if (eKainNeedUpdate) {
 
     //On vide les anciens paquets mis en cache.
@@ -546,9 +619,12 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
 
   // Assign new values
   Bluefruit.setTxPower(checkTxPower());
+  // Note : requires setBeacon.
   beacon.setMajorMinor(eKairnCurrent.eKairnMajor, checkEkMarker());
   // Restart the eBeacon
   if (!eKairnStop) {
+    // Note : this should not be necessary as advertizing is automatically restarted at connection if restartOnDisconnect(true). 
+    // BUT this is not true if clearData() is used.
     startAdv();
     Serial.println(F("EKairn Restart Advertising"));
     digitalWrite(LED_BLUE, HIGH);   // turn the BLUE LED OFF
@@ -646,32 +722,35 @@ void showSecurityLED() {
 }
 
 // Function to get a 16 bit unsigned integer from the BLE UART
+// Used by : J, E, !, O, C, D, ., K, $
 uint16_t readBLE16hex() {
   char st[8] = "";
   bleuart.read(st, 4);
   uint16_t val;
-  sscanf(st, "%4x", &val);
+  // Note : pour eviter les warnings.
+  sscanf(st, "%4hx", &val);
   Serial.print(" (");
   Serial.print(val, HEX);
   Serial.println(")");
   return (val);
 }
 // Function to get a 32 bit unsigned integer from the BLE UART
+// Used by : @
 uint32_t readBLE32hex() {
   char st[16] = "";
   bleuart.read(st, 8);
   uint32_t val;
-  sscanf(st, "%8x", &val);
+  // Note : pour eviter les warnings.
+  sscanf(st, "%8lx", &val);
   Serial.print(" (");
   Serial.print(val, HEX);
   Serial.println(")");
   return (val);
 }
 // Function to get a 16 bit signed integer from the BLE UART
+// Used by : M, T, P, W, L, G
 int16_t readBLE16dec() {
   char st[8] = "";
-  // Si le buffer de bleuart contient 8 ou plus caractères
-  // le caractère de fin de chaine ne peut être stocké.
   bleuart.read(st, 8);
   Serial.print("st(");
   Serial.print(st);
@@ -680,7 +759,7 @@ int16_t readBLE16dec() {
   // Si un caractère de l'argument n'est pas entier, 
   // sscanf s'arrête et retourne ce qu'il a pu lire.
   // Le mauvais caractère et les suivants sont perdus.
-  sscanf(st, "%d", &val);
+  sscanf(st, "%hd", &val);
   Serial.print(" (");
   Serial.print(val);
   Serial.println(")");
@@ -723,11 +802,18 @@ void loop() {
       strcat(disp, EKAIRN_FW_VERSION_STR);
       Serial.println(disp);
       bleuart.write(disp, strlen(disp));
+      #ifdef VERBOSE
+        Serial.println("----------- eKairnCurrent -----------");
+        eKairnParamDump(eKairnCurrent);
+        Serial.println("----------- eKairnFactory -----------");
+        eKairnParamDump(eKairnFactory);
+      #endif
       valCom = true;
     }
     if (ch == 'S') {
       // Display status
-      char st[16] = "";
+      // To avoid compiler warnings
+      char st[20] = "";
       sprintf(st, "Marker = %3d\r\n", eKairnCurrent.eKairnMarker);
       if (EK_FORCE_START) sprintf(st, "Marker = START\r\n");
       if (EK_FORCE_END) sprintf(st, "Marker = END\r\n");
@@ -764,7 +850,7 @@ void loop() {
         Serial.print(disp);
         bleuart.write(disp, strlen(disp));
         if (eKSEC >= SEC_FAB) {
-          char str[20] = "";
+          char str[21] = "";
           sprintf(disp, "Manuf. UID = %4x\n\r", eKairnCurrent.eKairnHWManuf);
           sprintf(str, "HWR = %d, %d, %d\n\r", eKairnCurrent.eKairnHWBat, eKairnCurrent.eKairnHWMegaLED, eKairnCurrent.eKairnHWBuzzer);
           strcat(disp, str);
@@ -779,9 +865,9 @@ void loop() {
     if (ch == 'V') {
       // Perform a VBat acquisition
       float VBat = ReadVbat();
-      Serial.print("VBat = ");
+      //Serial.print("VBat = ");
       char cvbat[64];
-      sprintf(cvbat, "%5.3f V = %3d %% (%6.0f); T = %6.2f°C\n", VBat, ConvertVBatInPercent(VBat), BatCapacityRemaining(VBat), temperatureAtConnection);
+      sprintf(cvbat, "VBat = %5.3f V = %3d %% (%6.0f); T = %6.2f°C\n", VBat, ConvertVBatInPercent(VBat), BatCapacityRemaining(VBat), temperatureAtConnection);
       Serial.print(cvbat);
       bleuart.write(cvbat, strlen(cvbat));
       valCom = true;
@@ -789,10 +875,9 @@ void loop() {
     // Then check commands allowed in ERM mode
     if (eKSEC >= SEC_ERM) {
       if (ch == 'M') {
-        char st[8] = "";
         uint16_t nval = readBLE16dec();
         //Serial.println(nval);
-        if ((nval < 0) || (nval > 999)) {
+        if (nval > 999) {
           const char err[] = "ERROR Invalid Value, must be [0..999]\n";
           Serial.print(err);
           //bleuart.write(err, sizeof(err));
@@ -937,24 +1022,31 @@ void loop() {
             eKairnDisplayDigit(eKairnCurrent.eKairnDispRot, eKairnCurrent.eKairnMarker, eKairnCurrent.eKairnMessage);
           }
         }
+        // Note : sans espace, l'afficheur ne supporte que 14 caractères (offset en début de ligne)
+        //        A123456789012345 --> le dernier 5 n'est pas affiché.
+        //        si on intercale au minimum 2 espaces à la place de 2 chiffres il est alors affiché.
+        //        A1234 6789 12345  --> le dernier 5 est affiché.
+        // Doc à revoir si on veut vraiment 16 caractères.
         if (ch == 'A') {
           if (eKairnCurrent.eKairnHWBuzzer) {
             eKairnFuncBuzz();
           }
-          char new_msg[16];
-          bool err = false;
+          char new_msg[] = "123456789012345"; // 15 caractères + \0
           int i = 0;
-          // Si on s'arrête à 8 on risque de laisser un reliquat dans le buffer qui sera ensuite utilisé comme commande suivante.
-          while (i < 16) {
+          while (i < 15) {
             if (bleuart.available()) {
               new_msg[i++] = (uint8_t)bleuart.read();
             } else {
-            // Si le nom est plus court que 16, on peut faire du "padding", plutot que d'obliger l'utilisateur à le faire.
+            // Si le nom est plus court que 15, on peut faire du "padding", plutot que d'obliger l'utilisateur à le faire.
               new_msg[i++] = ' ';
-            }
+            }           
           }
-          // Si le nom est plus long que 8, on ne met pas le nom a jour et valcom reste à false.
-          if (!bleuart.available()) {
+          // Alternative :
+          // Si le nom est plus long que 15, on ne met pas le nom a jour et valcom reste à false.
+          //if (!bleuart.available()) {
+            Serial.print("   Current message [");
+            Serial.print(eKairnCurrent.eKairnMessage);
+            Serial.println("]");
             for (i = 0; i < 16; i++) eKairnCurrent.eKairnMessage[i] = new_msg[i];
             Serial.print("Message changed to [");
             Serial.print(eKairnCurrent.eKairnMessage);
@@ -966,7 +1058,7 @@ void loop() {
             eKairnDisplayDigit(eKairnCurrent.eKairnDispRot, eKairnCurrent.eKairnMarker, eKairnCurrent.eKairnMessage);
             eKainNeedUpdate = true;
             valCom = true;
-          }
+          //}
 
         }
       }
@@ -975,9 +1067,7 @@ void loop() {
         // Nxxxxxxxx change name of the device
         if (ch == 'N') {
           char new_name[10];
-          bool err = false;
           int i = 0;
-          // Si on s'arrête à 8 on risque de laisser un reliquat dans le buffer qui sera ensuite utilisé comme commande suivante.
           while (i < 8) {
             if (bleuart.available()) {
               new_name[i++] = (uint8_t)bleuart.read();
@@ -987,7 +1077,10 @@ void loop() {
             }
           }
           // Si le nom est plus long que 8, on ne met pas le nom a jour et valcom reste à false.
-          if (!bleuart.available()) {
+          //if (!bleuart.available()) {
+            Serial.print("   Current Name [");
+            Serial.print(eKairnCurrent.eKairnName);
+            Serial.println("]");
             for (i = 0; i < 8; i++) eKairnCurrent.eKairnName[i] = new_name[i];
             Serial.print("Name changed to [");
             Serial.print(eKairnCurrent.eKairnName);
@@ -996,9 +1089,9 @@ void loop() {
             eKainFactoryNeedUpdate = true;
             eKainNeedUpdate = true;
             valCom = true;
-          }
+          //}
         }
-        // Exxx set EMR key
+        // Exxx set ERM key
         if (ch == 'E') {
           uint16_t val = readBLE16hex();
           eKairnCurrent.eKairnERMKey = val;
@@ -1076,7 +1169,7 @@ void loop() {
             QSPI_mem_dump(b, l);
             valCom = true;
           }
-          // Eraze the QSPI Memory
+          // Erase the QSPI Memory
           if (ch == '.') {
             if (readBLE16hex() == eKairnCodeLow) {
               QSPI_mem_erase_all();
@@ -1092,21 +1185,27 @@ void loop() {
     // ----- Security level management
     // Check change in security level to ERM
     if (ch == 'K') {
-      if (valCom = (readBLE16hex() == eKairnCurrent.eKairnERMKey)) {
+      //To avoid compiler warning.
+      valCom = (readBLE16hex() == eKairnCurrent.eKairnERMKey);
+      if (valCom) {
         eKSEC = SEC_ERM;
         eKSEChasChanged = true;
       }
     }
     // Check change in security level to FAB
     if (ch == '$') {
-      if (valCom = (readBLE16hex() == eKairnCurrent.eKairnFABKey)) {
+      //To avoid compilator warning.
+      valCom = (readBLE16hex() == eKairnCurrent.eKairnFABKey);
+      if (valCom) {
         eKSEC = SEC_FAB;
         eKSEChasChanged = true;
       } else delay(1000);  // To prevent Brute Force
     }
     // Check change in security level to HWR
     if (ch == '@') {
-      if (valCom = (readBLE32hex() == eKairnCurrent.eKairnHWRKey)) {
+      //To avoid compiler warning.
+      valCom = (readBLE32hex() == eKairnCurrent.eKairnHWRKey);
+      if (valCom) {
         eKSEC = SEC_HWR;
         eKSEChasChanged = true;
       } else {
@@ -1139,10 +1238,9 @@ void loop() {
     if (bleuart.available()) {
       // l'instruction suivante stocke automatiquement err en mémoire flash.
       // La macro F() est inutile sur ESP32 et nRF52840. C'est un héritage de l'Arduino uno.
-      const char err[] = "ERROR Invalid Key. Buffer not empty\n";
+      const char err[] = "ERROR Buffer not empty > ";
       //uint8_t ch;
       Serial.print(err);
-      Serial.print(" > ");
       // sizeof inclut le caractère de fin de chaine dans son calcul.
       // strlen ne comptabilise que les caractères.
       // On a le choix entre les 2 instructions suivantes.
@@ -1153,6 +1251,7 @@ void loop() {
       while (bleuart.available()) {  // Flush imput buffer
         ch = (uint8_t)bleuart.read();
         Serial.print((char)ch);
+        bleuart.write((char)ch);
       }
       Serial.println();
     }
